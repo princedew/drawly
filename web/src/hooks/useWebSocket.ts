@@ -10,6 +10,6 @@ export function useWebSocket(userId: string): WebSocket | undefined {
 
         return wsc;
     } catch (error) {
-        console.log("> ERROR (useWebSocket) : ", error);
+        console.log("> ERROR (useWebSocket.ts) : ", error);
     }
 }

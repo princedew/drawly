@@ -6,7 +6,7 @@ const Parent = () => {
   const wsc = useWebSocket(userId);
   return (
     <>
-      <App wsc={wsc} />
+      <App wsc={wsc} userId={userId}/>
     </>
   );
 };

@@ -19,9 +19,11 @@ function time() {
   return String(new Date(Date.now())).split(" ")[4];
 }
 
-function broadCast(lineData: LineDataType) {
-  for (const ws of registry.values()) {
-    ws.send(JSON.stringify(lineData));
+function broadCast(lineData: LineDataType, uId: string) {
+  for (const [userId, ws] of registry.entries()) {
+    if (userId !== uId) {
+      ws.send(JSON.stringify(lineData));
+    }
   }
 }
 
@@ -40,7 +42,7 @@ wss.on("connection", (ws) => {
 
     if (data.type === "LINE-INFO") {
       console.log("LINE-INFO :", data.line);
-      broadCast(data);
+      broadCast(data, userId);
     }
   });
 
