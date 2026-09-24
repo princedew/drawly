@@ -1,34 +1,18 @@
 import { useRef, useState } from "react";
 
-function Canvas({ wsc, userId }: { wsc: WebSocket; userId: string }) {
+function Canvas2({ wsc, userId }: { wsc: WebSocket; userId: string }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const prevPointRef = useRef<Record<string, number | null>>({
-    x: null,
-    y: null,
-  });
   const [canMove, setCanMove] = useState<boolean>(false);
 
-  const [line, setLine] = useState<Record<string, number | null>>({
-    startX: null,
-    startY: null,
-    endX: null,
-    endY: null,
-  });
+  type line = {
+    x: number | null;
+    y: number | null;
+  };
+  const [lineRecord, setLineRecord] = useState<line[]>([]);
 
   wsc.onmessage = (msg) => {
     const data = JSON.parse(msg.data);
-    console.log("BEFORE-CHECK DATA-RECV : ", data);
-
-    if (
-      data.type === "LINE-INFO" &&
-      data.line.startX !== null &&
-      data.line.startY !== null &&
-      data.line.endX !== null &&
-      data.line.endY !== null
-    ) {
-      console.log("> BRODECASTED LINE DATA :", data.line);
-      render(data);
-    }
+    render(data);
   };
 
   function render(data) {
@@ -37,17 +21,24 @@ function Canvas({ wsc, userId }: { wsc: WebSocket; userId: string }) {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    // if (data.isStart) {
-    //   console.log("insided data.isStart");
-    //   ctx.beginPath();
-    //   ctx.moveTo(data.line.startX, data.line.startY);
-    // } else {
-    console.log("inside begin path");
-    ctx.beginPath();
-    ctx.moveTo(data.line.startX, data.line.startY);
-    ctx.lineTo(data.line.endX, data.line.endY);
-    ctx.stroke();
-    // }
+
+    if (data.type === "LINE-RECORD") {
+      console.log("beginpathcalled");
+      ctx.beginPath();
+      console.log("begin path ended");
+      data.lineRecord.forEach((lineObj, idx) => {
+        if (idx === 0) {
+          console.log("0 index move to called");
+          ctx.moveTo(lineObj.x, lineObj.y);
+          console.log("move to ended");
+        }else{
+          ctx.strokeStyle = "orange"; 
+          ctx.lineWidth = 2;
+          ctx.lineTo(lineObj.x, lineObj.y);
+        }
+      });
+      ctx.stroke();
+    }
   }
 
   function checkPoint(data) {
@@ -74,7 +65,6 @@ function Canvas({ wsc, userId }: { wsc: WebSocket; userId: string }) {
 
   const start = (e: any) => {
     try {
-      const previousPoint = prevPointRef.current;
       const canvas = canvasRef.current;
       if (!canvas) return;
       const ctx = canvas.getContext("2d");
@@ -88,24 +78,9 @@ function Canvas({ wsc, userId }: { wsc: WebSocket; userId: string }) {
       ctx.beginPath();
       ctx.moveTo(x, y);
 
-      const newLine = {
-        startX: previousPoint.x,
-        startY: previousPoint.y,
-        endX: x,
-        endY: y,
-      };
+      const newLine = { x, y };
 
-      previousPoint.x = x;
-      previousPoint.y = y;
-
-      // const allPointAreThere = checkPoint(newLine);
-        wsSendJson({
-          type: "LINE-INFO",
-          // isStart: true,
-          // isEnd: false,
-          userId: userId,
-          line: newLine,
-        });
+      setLineRecord((prev) => [...prev, newLine]);
 
       setCanMove(true);
     } catch (error) {
@@ -118,7 +93,6 @@ function Canvas({ wsc, userId }: { wsc: WebSocket; userId: string }) {
       if (!canMove) {
         return;
       }
-      const previousPoint = prevPointRef.current;
       const canvas = canvasRef.current;
       if (!canvas) return;
       const ctx = canvas.getContext("2d");
@@ -128,30 +102,13 @@ function Canvas({ wsc, userId }: { wsc: WebSocket; userId: string }) {
       const x: number = e.clientX - rect.left;
       const y: number = e.clientY - rect.top;
       ctx.lineTo(x, y);
-
+      ctx.stroke();
       const newLine = {
-        startX: previousPoint.x,
-        startY: previousPoint.y,
-        endX: x,
-        endY: y,
+        x: x,
+        y: y,
       };
 
-      previousPoint.x = x;
-      previousPoint.y = y;
-
-      console.log("LINE [fn move()]:", newLine);
-
-      const allPointAreThere = checkPoint(newLine);
-      if (allPointAreThere) {
-        wsSendJson({
-          type: "LINE-INFO",
-          // isStart: false,
-          // isEnd: false,
-          userId: userId,
-          line: newLine,
-        });
-      }
-      ctx.stroke();
+      setLineRecord((prev) => [...prev, newLine]);
     } catch (error) {
       console.log("\n> ERROR [fn move()] : ", error);
     }
@@ -159,17 +116,19 @@ function Canvas({ wsc, userId }: { wsc: WebSocket; userId: string }) {
 
   const end = () => {
     setCanMove(false);
+    console.log("LINE-RECORD :", lineRecord);
+
     if (wsc?.readyState === wsc?.OPEN) {
       wsc?.send(
         JSON.stringify({
-          type: "LINE-INFO",
-          // isStart: false,
-          // isEnd: true,
+          type: "LINE-RECORD",
           userId: userId,
-          line: line,
+          lineRecord: lineRecord,
         }),
       );
+      setLineRecord([])
     }
+
   };
 
   return (
@@ -185,4 +144,7 @@ function Canvas({ wsc, userId }: { wsc: WebSocket; userId: string }) {
   );
 }
 
-export default Canvas;
+export default Canvas2;
+
+
+

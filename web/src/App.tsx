@@ -1,4 +1,4 @@
-import Canvas from "./Canvas";
+import Canvas2 from "./Canvas2";
 import { useWebSocket } from "./hooks/useWebSocket";
 
 const App = () => {
@@ -6,7 +6,7 @@ const App = () => {
   const wsc = useWebSocket(userId);
   return (
     <>
-      <Canvas wsc={wsc} userId={userId}/>
+      <Canvas2 wsc={wsc} userId={userId}/>
     </>
   );
 };

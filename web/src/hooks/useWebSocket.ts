@@ -4,7 +4,7 @@ export function useWebSocket(userId: string): WebSocket | undefined {
         const wsc = new WebSocket("ws://localhost:8000");
         
         wsc.onopen = () => {
-            console.log("CONNECTED");
+            console.log("CONNECTED :",userId);
             wsc.send(JSON.stringify({type: "FIRST-MSG", message:"FIRST MSG FROM CLIENT", userId:userId}))
         };
 
