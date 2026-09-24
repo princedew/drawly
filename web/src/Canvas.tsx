@@ -1,68 +1,60 @@
-import { useRef, useState } from "react";
+import React, { useRef, useState } from "react";
+
+type CoOrdinateObject = {
+  x: number;
+  y: number;
+};
+
+type RenderDataType = {
+  type: string;
+  userId: string;
+  coOrdinate: { x: number; y: number };
+};
+
+const prevCoOrdinateStore = new Map<string, { x: number; y: number }>();
 
 function Canvas({ wsc, userId }: { wsc: WebSocket; userId: string }) {
+  const [tool, setTool] = useState<"PENCIL" | "RECTANGLE" | "CIRCLE">("RECTANGLE");
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const prevPointRef = useRef<Record<string, number | null>>({
-    x: null,
-    y: null,
-  });
   const [canMove, setCanMove] = useState<boolean>(false);
-
-  const [line, setLine] = useState<Record<string, number | null>>({
-    startX: null,
-    startY: null,
-    endX: null,
-    endY: null,
-  });
 
   wsc.onmessage = (msg) => {
     const data = JSON.parse(msg.data);
-    console.log("BEFORE-CHECK DATA-RECV : ", data);
-
-    if (
-      data.type === "LINE-INFO" &&
-      data.line.startX !== null &&
-      data.line.startY !== null &&
-      data.line.endX !== null &&
-      data.line.endY !== null
-    ) {
-      console.log("> BRODECASTED LINE DATA :", data.line);
-      render(data);
-    }
+    render(data);
   };
 
-  function render(data) {
-    console.log("RENDER-DATA:", data);
+  function render(data: RenderDataType) {
+    // console.log("RENDER-DATA:", data);
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    // if (data.isStart) {
-    //   console.log("insided data.isStart");
-    //   ctx.beginPath();
-    //   ctx.moveTo(data.line.startX, data.line.startY);
-    // } else {
-    console.log("inside begin path");
-    ctx.beginPath();
-    ctx.moveTo(data.line.startX, data.line.startY);
-    ctx.lineTo(data.line.endX, data.line.endY);
-    ctx.stroke();
-    // }
-  }
 
-  function checkPoint(data) {
-    if (
-      data.startX === null ||
-      data.startY === null ||
-      data.endX === null ||
-      data.endY === null
-    ) {
-      return false;
+    ctx.strokeStyle = "red";
+    ctx.lineWidth = 2;
+
+    if (data.type === "START-COORDINATE") {
+      ctx.beginPath();
+      ctx.moveTo(data.coOrdinate.x, data.coOrdinate.y);
+      prevCoOrdinateStore.set(data.userId, {
+        x: data.coOrdinate.x,
+        y: data.coOrdinate.y,
+      });
+    } else if (data.type === "MOVING-COORDINATE") {
+      const prevCoOrdinate = prevCoOrdinateStore.get(data.userId);
+      if (!prevCoOrdinate) {
+        return;
+      }
+      ctx.lineTo(data.coOrdinate.x, data.coOrdinate.y);
+      prevCoOrdinateStore.set(data.userId, {
+        x: data.coOrdinate.x,
+        y: data.coOrdinate.y,
+      });
+      ctx.stroke();
     }
-    return true;
   }
 
-  function wsSendJson(data) {
+  function wsSend(data: RenderDataType) {
     if (!wsc) {
       console.log("wsc:", wsc);
       return;
@@ -72,9 +64,8 @@ function Canvas({ wsc, userId }: { wsc: WebSocket; userId: string }) {
     }
   }
 
-  const start = (e: any) => {
+  const start = (e: React.MouseEvent<HTMLCanvasElement>) => {
     try {
-      const previousPoint = prevPointRef.current;
       const canvas = canvasRef.current;
       if (!canvas) return;
       const ctx = canvas.getContext("2d");
@@ -88,37 +79,19 @@ function Canvas({ wsc, userId }: { wsc: WebSocket; userId: string }) {
       ctx.beginPath();
       ctx.moveTo(x, y);
 
-      const newLine = {
-        startX: previousPoint.x,
-        startY: previousPoint.y,
-        endX: x,
-        endY: y,
-      };
-
-      previousPoint.x = x;
-      previousPoint.y = y;
-
-      // const allPointAreThere = checkPoint(newLine);
-        wsSendJson({
-          type: "LINE-INFO",
-          // isStart: true,
-          // isEnd: false,
-          userId: userId,
-          line: newLine,
-        });
+      const coOrdinate: CoOrdinateObject = { x, y };
 
       setCanMove(true);
+      wsSend({ type: "START-COORDINATE", userId, coOrdinate });
     } catch (error) {
       console.log("\n> ERROR [fn start()]: ", error);
     }
   };
 
-  const move = (e: any) => {
+  const move = (e: React.MouseEvent<HTMLCanvasElement>) => {
     try {
-      if (!canMove) {
-        return;
-      }
-      const previousPoint = prevPointRef.current;
+      if (!canMove) return;
+
       const canvas = canvasRef.current;
       if (!canvas) return;
       const ctx = canvas.getContext("2d");
@@ -128,48 +101,30 @@ function Canvas({ wsc, userId }: { wsc: WebSocket; userId: string }) {
       const x: number = e.clientX - rect.left;
       const y: number = e.clientY - rect.top;
       ctx.lineTo(x, y);
-
-      const newLine = {
-        startX: previousPoint.x,
-        startY: previousPoint.y,
-        endX: x,
-        endY: y,
-      };
-
-      previousPoint.x = x;
-      previousPoint.y = y;
-
-      console.log("LINE [fn move()]:", newLine);
-
-      const allPointAreThere = checkPoint(newLine);
-      if (allPointAreThere) {
-        wsSendJson({
-          type: "LINE-INFO",
-          // isStart: false,
-          // isEnd: false,
-          userId: userId,
-          line: newLine,
-        });
-      }
       ctx.stroke();
+      const coOrdinate: CoOrdinateObject = { x, y };
+
+      wsSend({ type: "MOVING-COORDINATE", userId, coOrdinate });
     } catch (error) {
       console.log("\n> ERROR [fn move()] : ", error);
     }
   };
 
-  const end = () => {
+  const end = (e: React.MouseEvent<HTMLCanvasElement>) => {
     setCanMove(false);
-    if (wsc?.readyState === wsc?.OPEN) {
-      wsc?.send(
-        JSON.stringify({
-          type: "LINE-INFO",
-          // isStart: false,
-          // isEnd: true,
-          userId: userId,
-          line: line,
-        }),
-      );
-    }
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x: number = e.clientX - rect.left;
+    const y: number = e.clientY - rect.top;
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    const coOrdinate: CoOrdinateObject = { x, y };
+
+    wsSend({ type: "END-COORDINATE", userId, coOrdinate });
   };
 
   return (
