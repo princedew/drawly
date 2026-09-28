@@ -1,10 +1,19 @@
-import Canvas2 from "./Canvas";
-import { useWebSocket } from "./hooks/useWebSocket";
+import Auth from "./pages/Auth";
+import Canvas from "./pages/Canvas";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import Home from "./pages/Home";
 
 const App = () => {
-  const userId = crypto.randomUUID();
-  const wsc = useWebSocket(userId);
-  return <Canvas2 wsc={wsc} userId={userId} />;
+ 
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/auth" element={<Auth />} />
+        <Route path="/draw" element={<Canvas />} />
+      </Routes>
+    </BrowserRouter>
+  );
 };
 
 export default App;
