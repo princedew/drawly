@@ -35,5 +35,5 @@ export async function login(req: Request, res: Response) {
     maxAge: 24 * 60 * 60 * 1000,
   });
 
-  return res.status(200).json({ success: true, payload: { email: email } });
+  return res.status(200).json({ success: true,  message: "Login successful", id:user.id });
 }
