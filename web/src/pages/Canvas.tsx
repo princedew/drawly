@@ -3,7 +3,8 @@ import { useStore } from "../store/store";
 import Room from "../components/Room";
 import { useNavigate } from "react-router-dom";
 import { useWebSocket } from "../hooks/useWebSocket";
-import { DRAWING_COLORS, type DrawingColor } from "../store/store";
+import { type DrawingColor } from "../store/store";
+import { DRAWING_COLORS } from "../utils/utils";
 
 type CoOrdinateObject = {
   x: number;
