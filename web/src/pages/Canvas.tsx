@@ -13,8 +13,11 @@ type CoOrdinateObject = {
 
 type Tool = "PENCIL" | "RECTANGLE";
 
+type EventType = "START-COORDINATE" | "MOVING-COORDINATE" | "END-COORDINATE";
+type RectDataTuple = [number, number, number, number];
+
 type RenderDataType = {
-  type: string;
+  type: EventType;
   tool: Tool;
   userId: number;
   color: DrawingColor;
@@ -22,31 +25,23 @@ type RenderDataType = {
 };
 
 type RectDataType = {
-  type: string;
+  type: EventType;
   tool: Tool;
   userId: number;
   color: DrawingColor;
-  rectData: [number, number, number, number];
+  rectData: RectDataTuple;
 };
 
 type UserRectDataType = {
-  type: string;
+  type: EventType;
   tool: Tool;
   userId: number;
   color: DrawingColor;
-  usersRect: LastRect[];
-};
-
-type LastRect = {
-  x: number;
-  y: number;
+  usersRect: Record<string, number>[];
 };
 
 const prevCoOrdForLineRendering = new Map<number, CoOrdinateObject>();
-const prevRectForRendering = new Map<
-  number,
-  [number, number, number, number]
->();
+const prevRectForRendering = new Map<number, RectDataTuple>();
 
 function Canvas() {
   const navigate = useNavigate();
@@ -56,9 +51,21 @@ function Canvas() {
   const roomData = useStore((state) => state.roomData);
   const [canMove, setCanMove] = useState<boolean>(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [usersRect, setUsersRect] = useState<Record<string, number>[]>([]);
   const rectStartingCoOrdinate = useRef<CoOrdinateObject | null>(null);
-  const rectImage = useRef<Record<string, number> | null>(null);
+  const [usersRect, setUsersRect] = useState<
+    {
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+    }[]
+  >([]);
+  const rectImage = useRef<{
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  } | null>(null);
   const wsc = useWebSocket(userId);
   console.log("USER-ID:", userId);
 
@@ -91,20 +98,22 @@ function Canvas() {
         if (!canvas) return;
         const ctx = canvas.getContext("2d");
         if (!ctx) return;
-
         ctx.strokeStyle = DRAWING_COLORS[data.color as DrawingColor];
         ctx.lineWidth = 2;
-        if (data.type === "START-COORDINATE") {
+        if (data.type === "START-COORDINATE" && "rectData" in data) {
           let x = data.rectData[0];
           let y = data.rectData[1];
           let w = data.rectData[2];
           let h = data.rectData[3];
           ctx.strokeRect(x, y, w, h);
           prevRectForRendering.set(data.userId, [x, y, w, h]);
-        } else if (data.type === "MOVING-COORDINATE") {
-          const [prev_x, prev_y, prev_w, prev_h] = prevRectForRendering.get(
-            data.userId,
-          );
+        } else if (data.type === "MOVING-COORDINATE" && "rectData" in data) {
+          const temp = prevRectForRendering.get(data.userId);
+          if (!temp) {
+            return;
+          }
+          const [prev_x, prev_y, prev_w, prev_h] = temp;
+
           let x = data.rectData[0];
           let y = data.rectData[1];
           let w = data.rectData[2];
@@ -151,7 +160,7 @@ function Canvas() {
     } catch (error) {
       if (error instanceof Error) {
         console.log("ERROR:", error.message);
-      }else{
+      } else {
         console.log("ERROR:", error);
       }
     }
@@ -275,6 +284,9 @@ function Canvas() {
 
     if (tool === "RECTANGLE") {
       setUsersRect((prev) => {
+        if (!rectImage.current) {
+          return prev;
+        }
         return [...prev, rectImage.current];
       });
       wsSend({ type: "END-COORDINATE", tool, userId, color, usersRect });
