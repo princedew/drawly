@@ -149,7 +149,11 @@ function Canvas() {
         }
       }
     } catch (error) {
-      console.log("ERROR:", error.message);
+      if (error instanceof Error) {
+        console.log("ERROR:", error.message);
+      }else{
+        console.log("ERROR:", error);
+      }
     }
   }, [wsc, userId]);
 
