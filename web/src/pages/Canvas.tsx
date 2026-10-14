@@ -52,7 +52,7 @@ function Canvas() {
   const userId = useStore((state) => state.userId);
   const roomData = useStore((state) => state.roomData);
 
-  const [canMove, setCanMove] = useState<boolean>(false);
+  const canMoveRef = useRef<boolean>(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rectStartingCoOrdinate = useRef<CoOrdinateObject | null>(null);
   const collectionOfPencilLineSegment = useRef<PencilDataType[] | []>([]);
@@ -95,7 +95,7 @@ function Canvas() {
       };
 
       // ----------------------
-      //  RENDERING DRAWING TO THE MID JOIN USER IN THE ROOM. 
+      //  RENDERING DRAWING TO THE MID JOIN USER IN THE ROOM.
       // ----------------------
       function renderPrevPencilDrawing(
         arrayOfPencilLineSegCollection: PencilDataType[][],
@@ -323,7 +323,7 @@ function Canvas() {
         });
         wsSend({ type: "START-COORDINATE", tool, userId, color, coOrdinate });
       }
-      setCanMove(true);
+      canMoveRef.current = true;
     } catch (error) {
       console.log("\n> ERROR [fn start()]: ", error);
     }
@@ -332,7 +332,7 @@ function Canvas() {
   const move = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (userId === null) return;
     try {
-      if (!canMove) return;
+      if (!canMoveRef.current) return;
 
       const canvas = canvasRef.current;
       if (!canvas) return;
@@ -396,7 +396,7 @@ function Canvas() {
 
   const end = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (userId === null) return;
-    setCanMove(false);
+    canMoveRef.current = false;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
