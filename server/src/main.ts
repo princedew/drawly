@@ -14,8 +14,8 @@ app.use(
   }),
 );
 
-const port = process.env.PORT || 5000;
-const url = process.env.BASE_URL || "/api";
+const port = 5000;
+const url = "/api";
 
 app.get("/", (req, res) => {
   res.send("server running ...");

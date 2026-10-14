@@ -21,6 +21,7 @@ const login = async (data: AuthenthicationDataType): Promise<AuthResponse> => {
   const result = await api.post<AuthResponse>("/login", data);
   return result.data;
 };
+
 export function useAuth() {
   const signupMutation = useMutation({
     mutationFn: signup,
@@ -30,6 +31,7 @@ export function useAuth() {
     mutationFn: login,
     mutationKey: ["auth", "login"],
   });
+
   return {
     signup: signupMutation.mutateAsync,
     login: loginMutation.mutateAsync,
