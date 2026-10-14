@@ -41,6 +41,9 @@ type UserRectDataType = {
   usersRect: Record<string, number>[];
 };
 
+// --------------------------
+// USING THIS MAP TO RECORD THE LAST PENCIL CO-ORDINATE OF ANY SPECIFIC USER , WHICH IS USEFULL IF 2 USERS DRAWING SIMUNTANIOUSLY AND WE ARE RECEVING WS UPDT OF THOSE SIMUNTANOULY UPDTS.
+// --------------------------
 const prevCoOrdForLineRendering = new Map<number, CoOrdinateObject>();
 const prevRectForRendering = new Map<number, RectDataTuple>();
 
@@ -52,7 +55,7 @@ function Canvas() {
   const userId = useStore((state) => state.userId);
   const roomData = useStore((state) => state.roomData);
 
-  const canMoveRef = useRef<boolean>(false);
+  const [canMove, setCanMove] = useState<boolean>(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rectStartingCoOrdinate = useRef<CoOrdinateObject | null>(null);
   const collectionOfPencilLineSegment = useRef<PencilDataType[] | []>([]);
@@ -94,9 +97,6 @@ function Canvas() {
         }
       };
 
-      // ----------------------
-      //  RENDERING DRAWING TO THE MID JOIN USER IN THE ROOM.
-      // ----------------------
       function renderPrevPencilDrawing(
         arrayOfPencilLineSegCollection: PencilDataType[][],
       ) {
@@ -113,10 +113,15 @@ function Canvas() {
 
         ctx.lineWidth = 2;
 
+        // --------------------------
+        // USING THIS MAP TO RECORD THE LAST PENCIL CO-ORDINATE OF ANY SPECIFIC USER , WHICH IS USEFULL IF 2 USERS DRAWING SIMUNTANIOUSLY AND WE ARE RECEVING WS UPDT OF THOSE SIMUNTANOULY UPDTS.
+        // --------------------------
+        const prevCoOrdinateForRendering = new Map<number, CoOrdinateObject>();
+
         for (const collection of arrayOfPencilLineSegCollection) {
           for (const partOfLineSegment of collection) {
-            const colorKey = partOfLineSegment.color as DrawingColor;
-            const strokeColor = DRAWING_COLORS[colorKey] ?? DRAWING_COLORS.GRAY;
+            const color = partOfLineSegment.color as DrawingColor;
+            const strokeColor = DRAWING_COLORS[color] ?? DRAWING_COLORS.GRAY;
             ctx.strokeStyle = strokeColor;
 
             if (partOfLineSegment.type === "START-COORDINATE") {
@@ -125,18 +130,33 @@ function Canvas() {
                 partOfLineSegment.coOrdinate.x,
                 partOfLineSegment.coOrdinate.y,
               );
+              prevCoOrdinateForRendering.set(partOfLineSegment.userId, {
+                x: partOfLineSegment.coOrdinate.x,
+                y: partOfLineSegment.coOrdinate.y,
+              });
             } else if (partOfLineSegment.type === "MOVING-COORDINATE") {
+              const prevCoOrdinate = prevCoOrdinateForRendering.get(
+                partOfLineSegment.userId,
+              );
+              if (!prevCoOrdinate) continue;
+              ctx.moveTo(prevCoOrdinate.x, prevCoOrdinate.y);
               ctx.lineTo(
                 partOfLineSegment.coOrdinate.x,
                 partOfLineSegment.coOrdinate.y,
               );
+              prevCoOrdinateForRendering.set(partOfLineSegment.userId, {
+                x: partOfLineSegment.coOrdinate.x,
+                y: partOfLineSegment.coOrdinate.y,
+              });
               ctx.stroke();
             } else if (partOfLineSegment.type === "END-COORDINATE") {
+              prevCoOrdinateForRendering.delete(partOfLineSegment.userId);
             }
           }
         }
         console.log(`Rendered  previous pencil segments`);
       }
+
       function renderPrevRectDrawing(data: {
         roomId: number;
         roomDrawing: {
@@ -181,9 +201,6 @@ function Canvas() {
         }
       }
 
-      // ----------------------
-      //  RENDERING ROOM'S BROADCASTED DRAWING IN THE CANVAS.
-      // ----------------------
       function renderRectangle(data: RectDataType | UserRectDataType) {
         console.log("RENDER-DATA:", data);
         const canvas = canvasRef.current;
@@ -216,6 +233,7 @@ function Canvas() {
         } else if (data.type === "END-COORDINATE") {
         }
       }
+
       function renderPencilDrawing(data: PencilDataType) {
         console.log("RENDER-DATA:", data);
         const canvas = canvasRef.current;
@@ -238,6 +256,7 @@ function Canvas() {
           if (!prevCoOrdinate) {
             return;
           }
+          ctx.moveTo(prevCoOrdinate.x, prevCoOrdinate.y);
           ctx.lineTo(data.coOrdinate.x, data.coOrdinate.y);
           prevCoOrdForLineRendering.set(data.userId, {
             x: data.coOrdinate.x,
@@ -309,7 +328,7 @@ function Canvas() {
         });
         wsSend({ type: "START-COORDINATE", tool, userId, color, coOrdinate });
       }
-      canMoveRef.current = true;
+      setCanMove(true);
     } catch (error) {
       console.log("\n> ERROR [fn start()]: ", error);
     }
@@ -318,7 +337,7 @@ function Canvas() {
   const move = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (userId === null) return;
     try {
-      if (!canMoveRef.current) return;
+      if (!canMove) return;
 
       const canvas = canvasRef.current;
       if (!canvas) return;
@@ -382,7 +401,7 @@ function Canvas() {
 
   const end = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (userId === null) return;
-    canMoveRef.current = false;
+    setCanMove(false);
 
     const canvas = canvasRef.current;
     if (!canvas) return;
