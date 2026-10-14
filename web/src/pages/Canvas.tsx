@@ -52,14 +52,7 @@ function Canvas() {
   const [canMove, setCanMove] = useState<boolean>(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rectStartingCoOrdinate = useRef<CoOrdinateObject | null>(null);
-  const [usersRect, setUsersRect] = useState<
-    {
-      x: number;
-      y: number;
-      w: number;
-      h: number;
-    }[]
-  >([]);
+
   const rectImage = useRef<{
     x: number;
     y: number;
@@ -71,7 +64,7 @@ function Canvas() {
 
   useEffect(() => {
     if (userId === null) {
-      navigate("/auth", { replace: true });
+      navigate("/auth");
     }
   }, [navigate, userId]);
 
@@ -90,7 +83,55 @@ function Canvas() {
         if (data.tool === "PENCIL") {
           renderPencilDrawing(data);
         }
+        if (data.type === "PREV-DRAWING") {
+          console.log("PREV-DATA :", data);
+          renderPrevDrawing(data);
+        }
       };
+
+      function renderPrevDrawing(data: {
+        roomId: number;
+        roomDrawing: {
+          x: number;
+          y: number;
+          w: number;
+          h: number;
+          color: string;
+        }[];
+      }) {
+        console.log("PREV-DATA :", data);
+        const roomData = useStore.getState().roomData;
+        if (!roomData) {
+          console.log("> ROOM-DATA:", roomData);
+          return;
+        }
+        if (data.roomId === roomData.roomId) {
+          console.log("PREV-DATA :", 1);
+          const canvas = canvasRef.current;
+          if (!canvas) return;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return;
+
+          const drawings = data.roomDrawing;
+          if (!Array.isArray(drawings) || drawings.length === 0) {
+            console.log("No previous drawings to render");
+            return;
+          }
+
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.lineWidth = 2;
+
+          console.log("PREV-DATA :", 1);
+          for (const drawing of drawings) {
+            console.log("PREV-DATA :", 1);
+            const colorKey = drawing.color as DrawingColor;
+            const strokeColor = DRAWING_COLORS[colorKey] ?? DRAWING_COLORS.GRAY;
+            ctx.strokeStyle = strokeColor;
+            ctx.strokeRect(drawing.x, drawing.y, drawing.w, drawing.h);
+          }
+          console.log(`Rendered ${drawings.length} previous drawings`);
+        }
+      }
 
       function renderRectangle(data: RectDataType | UserRectDataType) {
         console.log("RENDER-DATA:", data);
@@ -283,13 +324,21 @@ function Canvas() {
     const y: number = e.clientY - rect.top;
 
     if (tool === "RECTANGLE") {
-      setUsersRect((prev) => {
-        if (!rectImage.current) {
-          return prev;
-        }
-        return [...prev, rectImage.current];
+      if (!rectImage.current) {
+        return;
+      }
+      wsSend({
+        type: "END-COORDINATE",
+        tool,
+        userId,
+        color,
+        rectData: [
+          rectImage.current.x,
+          rectImage.current.y,
+          rectImage.current.w,
+          rectImage.current.h,
+        ],
       });
-      wsSend({ type: "END-COORDINATE", tool, userId, color, usersRect });
       rectImage.current = null;
     } else if (tool === "PENCIL") {
       ctx.lineTo(x, y);

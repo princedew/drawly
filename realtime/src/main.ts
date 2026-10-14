@@ -1,21 +1,35 @@
 import { prisma } from "../../package/db/lib/prisma.js";
 import { WebSocket, WebSocketServer } from "ws";
 import jwt, { type JwtPayload } from "jsonwebtoken";
-type CordinateType = number | null;
-type LineDataType = {
-  type: string;
-  line: {
-    startX: CordinateType;
-    startY: CordinateType;
-    endX: CordinateType;
-    endY: CordinateType;
-  };
+
+type RectImageType = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  color: string;
 };
 
 const wss = new WebSocketServer({ port: 8000 });
 
 const registry = new Map<number, WebSocket>();
 const room = new Map<number, Set<number>>();
+
+const roomDrawing = new Map<number, RectImageType[]>();
+
+function sendRoomDrawing(ws: WebSocket, roomId: number) {
+  const roomDrawingR = roomDrawing.get(roomId);
+
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(
+      JSON.stringify({
+        type: "PREV-DRAWING",
+        roomId,
+        roomDrawing: roomDrawingR,
+      }),
+    );
+  }
+}
 
 function time() {
   return String(new Date(Date.now())).split(" ")[4];
@@ -32,9 +46,15 @@ function removeUserFromRooms(userId: number) {
 
 function addUserToRoom(roomId: number, userId: number) {
   removeUserFromRooms(userId);
-  const users = room.get(roomId) ?? new Set<number>();
-  users.add(userId);
-  room.set(roomId, users);
+  const users = room.get(roomId);
+  if (!users) {
+    const allUsers = new Set<number>();
+    allUsers.add(userId);
+    room.set(roomId, allUsers);
+  } else {
+    users.add(userId);
+    room.set(roomId, users);
+  }
 }
 
 function broadcastToRoom(data: unknown, roomId: number, senderId: number) {
@@ -50,30 +70,25 @@ function broadcastToRoom(data: unknown, roomId: number, senderId: number) {
   }
 }
 
-async function removeUserFromRoom(userId: number) {
-  try {
-    const user = await prisma.user.update({
-      where: { id:userId },
-      data: { roomId: null },
-      select: { id: true },
-    });
-    if (!user) {
-      return;
-    }
-    return user;
-  } catch (error) {
-    if (error instanceof Error) {
-      console.log("ERROR:", error.message);
-    } else {
-      console.log("ERROR:", error);
-    }
-  }
+function addRectangleInRoomMap(data) {
+  const [x, y, w, h] = data.rectData;
+  const prevRect = roomDrawing.get(data.roomId) ?? [];
+  prevRect.push({ x, y, w, h, color: data.color });
+  roomDrawing.set(data.roomId, prevRect);
 }
 
-wss.on("connection", (ws, req) => {
-  let userId: number;
+function addUserInRegistryMap(data, userId, ws) {
+  if (data.userId !== userId) return ws.close(1008, "Invalid user ID");
+  console.log(`[${time()}] USERID-INFO :`, userId);
+  registry.set(userId, ws);
+}
 
-  const cookie = req.headers.cookie;
+function removeUserFromRegistryMap(userId) {
+  console.log(`[${time()}] CLIENT DIS-CONNECTED`);
+  registry.delete(userId);
+}
+
+function authenthicate(cookie, ws) {
   if (!cookie) {
     console.log("COOKIE:", cookie);
     return ws.close(1008, "Unauthorized");
@@ -97,54 +112,49 @@ wss.on("connection", (ws, req) => {
     console.log("PAYLOAD: ", payload);
     return ws.close(1008, "Invalid payload");
   }
-  userId = payload.userId;
+  let userId = payload.userId;
 
   console.log(`[${time()}] CLIENT CONNECTED : ${userId}`);
+  return userId;
+}
+
+wss.on("connection", (ws, req) => {
+  let userId = authenthicate(req.headers.cookie, ws);
 
   ws.on("message", (msg) => {
     const data = JSON.parse(msg.toString());
     console.log("WS-SERVER RECV: ", data);
 
     if (data.type === "FIRST-MSG") {
-      if (data.userId !== userId) return ws.close(1008, "Invalid user ID");
-      console.log(`[${time()}] USERID-INFO :`, userId);
-      registry.set(userId, ws);
+      addUserInRegistryMap(data, userId, ws);
     }
-
-    if (
-      (data.type === "CREATE-ROOM" ||
-        data.type === "JOIN-ROOM" ||
-        data.type === "LEAVE-ROOM") &&
-      data.userId === userId &&
-      typeof data.userId === "number" &&
-      data.roomId > 0
-    ) {
-      if (data.type === "LEAVE-ROOM") {
-        room.get(data.roomId).delete(userId);
-        if (room.get(data.roomId)?.size === 0) room.delete(data.roomId);
-      } else {
-        addUserToRoom(data.roomId, userId);
-      }
+    if (data.type === "JOIN-ROOM") {
+      sendRoomDrawing(ws, data.roomId);
     }
-
+    if (data.type === "LEAVE-ROOM") {
+      removeUserFromRooms(userId);
+    }
     if (
-      data.type === "START-COORDINATE" ||
-      data.type === "MOVING-COORDINATE" ||
-      data.type === "END-COORDINATE"
+      (data.type === "CREATE-ROOM" || data.type === "JOIN-ROOM") &&
+      data.userId === userId
     ) {
-      if (typeof data.roomId === "number" && data.roomId > 0) {
-        broadcastToRoom(data, data.roomId, userId);
-      }
+      addUserToRoom(data.roomId, userId);
+    }
+    if (
+      (data.type === "START-COORDINATE" ||
+        data.type === "MOVING-COORDINATE" ||
+        data.type === "END-COORDINATE") &&
+      data.userId === userId
+    ) {
+      broadcastToRoom(data, data.roomId, userId);
+    }
+    if (data.tool === "RECTANGLE" && data.type === "END-COORDINATE") {
+      addRectangleInRoomMap(data);
     }
   });
 
   ws.on("close", async () => {
-    console.log(`[${time()}] CLIENT DIS-CONNECTED`);
-    registry.delete(userId);
+    removeUserFromRegistryMap(userId);
     removeUserFromRooms(userId);
-    const user = await removeUserFromRoom(userId);
-    if (!user) {
-      return;
-    }
   });
 });
