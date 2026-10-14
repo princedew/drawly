@@ -94,6 +94,9 @@ function Canvas() {
         }
       };
 
+      // ----------------------
+      //  RENDERING DRAWING TO THE MID JOIN USER IN THE ROOM. 
+      // ----------------------
       function renderPrevPencilDrawing(
         arrayOfPencilLineSegCollection: PencilDataType[][],
       ) {
@@ -102,8 +105,6 @@ function Canvas() {
           arrayOfPencilLineSegCollection.length === 0
         )
           return;
-
-        const flattenedSegments = arrayOfPencilLineSegCollection;
 
         const canvas = canvasRef.current;
         if (!canvas) return;
@@ -148,11 +149,8 @@ function Canvas() {
             }
           }
         }
-        console.log(
-          `Rendered  previous pencil segments`,
-        );
+        console.log(`Rendered  previous pencil segments`);
       }
-
       function renderPrevRectDrawing(data: {
         roomId: number;
         roomDrawing: {
@@ -197,6 +195,9 @@ function Canvas() {
         }
       }
 
+      // ----------------------
+      //  RENDERING ROOM'S BROADCASTED DRAWING IN THE CANVAS.
+      // ----------------------
       function renderRectangle(data: RectDataType | UserRectDataType) {
         console.log("RENDER-DATA:", data);
         const canvas = canvasRef.current;
@@ -229,7 +230,6 @@ function Canvas() {
         } else if (data.type === "END-COORDINATE") {
         }
       }
-
       function renderPencilDrawing(data: PencilDataType) {
         console.log("RENDER-DATA:", data);
         const canvas = canvasRef.current;
