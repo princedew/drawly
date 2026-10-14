@@ -16,12 +16,13 @@ type Tool = "PENCIL" | "RECTANGLE";
 type EventType = "START-COORDINATE" | "MOVING-COORDINATE" | "END-COORDINATE";
 type RectDataTuple = [number, number, number, number];
 
-type RenderDataType = {
+type PencilDataType = {
   type: EventType;
   tool: Tool;
   userId: number;
   color: DrawingColor;
   coOrdinate: CoOrdinateObject;
+  collectionOfPencilLineSegment?: PencilDataType[];
 };
 
 type RectDataType = {
@@ -45,13 +46,16 @@ const prevRectForRendering = new Map<number, RectDataTuple>();
 
 function Canvas() {
   const navigate = useNavigate();
+
   const tool = useStore((state) => state.tool);
   const color = useStore((state) => state.color);
   const userId = useStore((state) => state.userId);
   const roomData = useStore((state) => state.roomData);
+
   const [canMove, setCanMove] = useState<boolean>(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rectStartingCoOrdinate = useRef<CoOrdinateObject | null>(null);
+  const collectionOfPencilLineSegment = useRef<PencilDataType[] | []>([]);
 
   const rectImage = useRef<{
     x: number;
@@ -85,11 +89,71 @@ function Canvas() {
         }
         if (data.type === "PREV-DRAWING") {
           console.log("PREV-DATA :", data);
-          renderPrevDrawing(data);
+          renderPrevRectDrawing(data.roomDrawingObj.rectangleDrawing);
+          renderPrevPencilDrawing(data.roomDrawingObj.pencilDrawing);
         }
       };
 
-      function renderPrevDrawing(data: {
+      function renderPrevPencilDrawing(
+        arrayOfPencilLineSegCollection: PencilDataType[][],
+      ) {
+        if (
+          !Array.isArray(arrayOfPencilLineSegCollection) ||
+          arrayOfPencilLineSegCollection.length === 0
+        )
+          return;
+
+        const flattenedSegments = arrayOfPencilLineSegCollection;
+
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+
+        ctx.lineWidth = 2;
+        const prevCoOrdinateForRendering = new Map<number, CoOrdinateObject>();
+
+        for (const collection of arrayOfPencilLineSegCollection) {
+          for (const partOfLineSegment of collection) {
+            const colorKey = partOfLineSegment.color as DrawingColor;
+            const strokeColor = DRAWING_COLORS[colorKey] ?? DRAWING_COLORS.GRAY;
+            ctx.strokeStyle = strokeColor;
+
+            if (partOfLineSegment.type === "START-COORDINATE") {
+              ctx.beginPath();
+              ctx.moveTo(
+                partOfLineSegment.coOrdinate.x,
+                partOfLineSegment.coOrdinate.y,
+              );
+              prevCoOrdinateForRendering.set(partOfLineSegment.userId, {
+                x: partOfLineSegment.coOrdinate.x,
+                y: partOfLineSegment.coOrdinate.y,
+              });
+            } else if (partOfLineSegment.type === "MOVING-COORDINATE") {
+              const prevCoOrdinate = prevCoOrdinateForRendering.get(
+                partOfLineSegment.userId,
+              );
+              if (!prevCoOrdinate) continue;
+              ctx.lineTo(
+                partOfLineSegment.coOrdinate.x,
+                partOfLineSegment.coOrdinate.y,
+              );
+              prevCoOrdinateForRendering.set(partOfLineSegment.userId, {
+                x: partOfLineSegment.coOrdinate.x,
+                y: partOfLineSegment.coOrdinate.y,
+              });
+              ctx.stroke();
+            } else if (partOfLineSegment.type === "END-COORDINATE") {
+              prevCoOrdinateForRendering.delete(partOfLineSegment.userId);
+            }
+          }
+        }
+        console.log(
+          `Rendered  previous pencil segments`,
+        );
+      }
+
+      function renderPrevRectDrawing(data: {
         roomId: number;
         roomDrawing: {
           x: number;
@@ -166,7 +230,7 @@ function Canvas() {
         }
       }
 
-      function renderPencilDrawing(data: RenderDataType) {
+      function renderPencilDrawing(data: PencilDataType) {
         console.log("RENDER-DATA:", data);
         const canvas = canvasRef.current;
         if (!canvas) return;
@@ -207,10 +271,16 @@ function Canvas() {
     }
   }, [wsc, userId]);
 
-  function wsSend(data: RenderDataType | RectDataType | UserRectDataType) {
+  function wsSend(data: PencilDataType | RectDataType | UserRectDataType) {
     if (wsc && userId !== null && wsc.readyState === WebSocket.OPEN) {
       wsc.send(JSON.stringify({ ...data, roomId: roomData?.roomId ?? null }));
     }
+  }
+  function addInPencilLineSegmentCollection(data) {
+    collectionOfPencilLineSegment.current = [
+      ...collectionOfPencilLineSegment.current,
+      data,
+    ];
   }
 
   const start = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -240,10 +310,17 @@ function Canvas() {
           color,
           rectData: [x, y, 0, 0],
         });
-      } else {
+      } else if (tool === "PENCIL") {
         ctx.beginPath();
         ctx.moveTo(x, y);
         const coOrdinate: CoOrdinateObject = { x, y };
+        addInPencilLineSegmentCollection({
+          type: "START-COORDINATE",
+          tool,
+          userId,
+          color,
+          coOrdinate,
+        });
         wsSend({ type: "START-COORDINATE", tool, userId, color, coOrdinate });
       }
       setCanMove(true);
@@ -303,6 +380,13 @@ function Canvas() {
         ctx.lineTo(x, y);
         ctx.stroke();
         const coOrdinate: CoOrdinateObject = { x, y };
+        addInPencilLineSegmentCollection({
+          type: "MOVING-COORDINATE",
+          tool,
+          userId,
+          color,
+          coOrdinate,
+        });
         wsSend({ type: "MOVING-COORDINATE", tool, userId, color, coOrdinate });
       }
     } catch (error) {
@@ -344,8 +428,21 @@ function Canvas() {
       ctx.lineTo(x, y);
       ctx.stroke();
       const coOrdinate: CoOrdinateObject = { x, y };
-
-      wsSend({ type: "END-COORDINATE", tool, userId, color, coOrdinate });
+      addInPencilLineSegmentCollection({
+        type: "END-COORDINATE",
+        tool,
+        userId,
+        color,
+        coOrdinate,
+      });
+      wsSend({
+        type: "END-COORDINATE",
+        tool,
+        userId,
+        color,
+        coOrdinate,
+        collectionOfPencilLineSegment: collectionOfPencilLineSegment.current,
+      });
     }
   };
 

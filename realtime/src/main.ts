@@ -1,6 +1,6 @@
 import { prisma } from "../../package/db/lib/prisma.js";
 import { WebSocket, WebSocketServer } from "ws";
-import jwt, { type JwtPayload } from "jsonwebtoken";
+import jwt from "jsonwebtoken";
 
 type RectImageType = {
   x: number;
@@ -10,22 +10,43 @@ type RectImageType = {
   color: string;
 };
 
+type CoOrdinateObject = {
+  x: number;
+  y: number;
+};
+
+type Tool = "PENCIL" | "RECTANGLE";
+
+type EventType = "START-COORDINATE" | "MOVING-COORDINATE" | "END-COORDINATE";
+type PencilDataType = {
+  type: EventType;
+  tool: Tool;
+  userId: number;
+  color: string;
+  coOrdinate: CoOrdinateObject;
+};
+
+type RoomDrawing = {
+  rectangleDrawing: RectImageType[];
+  pencilDrawing: PencilDataType[];
+};
+
 const wss = new WebSocketServer({ port: 8000 });
 
 const registry = new Map<number, WebSocket>();
 const room = new Map<number, Set<number>>();
 
-const roomDrawing = new Map<number, RectImageType[]>();
+const roomDrawing = new Map<number, RoomDrawing>();
 
 function sendRoomDrawing(ws: WebSocket, roomId: number) {
-  const roomDrawingR = roomDrawing.get(roomId);
+  const roomDrawingObj = roomDrawing.get(roomId);
 
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(
       JSON.stringify({
         type: "PREV-DRAWING",
         roomId,
-        roomDrawing: roomDrawingR,
+        roomDrawingObj,
       }),
     );
   }
@@ -72,9 +93,27 @@ function broadcastToRoom(data: unknown, roomId: number, senderId: number) {
 
 function addRectangleInRoomMap(data) {
   const [x, y, w, h] = data.rectData;
-  const prevRect = roomDrawing.get(data.roomId) ?? [];
-  prevRect.push({ x, y, w, h, color: data.color });
-  roomDrawing.set(data.roomId, prevRect);
+  let roomDrawingObj = roomDrawing.get(data.roomId);
+  if (!roomDrawingObj) {
+    roomDrawingObj = { rectangleDrawing: [], pencilDrawing: [] };
+    roomDrawing.set(data.roomId, roomDrawingObj);
+  }
+  roomDrawingObj.rectangleDrawing.push({ x, y, w, h, color: data.color });
+  roomDrawing.set(data.roomId, roomDrawingObj);
+}
+
+function addPencilLineSegmentsInRoomMap(data) {
+  if (!data.collectionOfPencilLineSegment) {
+    console.log("No collection of pencil lineSegment");
+    return;
+  }
+  let roomDrawingObj = roomDrawing.get(data.roomId);
+  if (!roomDrawingObj) {
+    roomDrawingObj = { rectangleDrawing: [], pencilDrawing: [] };
+    roomDrawing.set(data.roomId, roomDrawingObj);
+  }
+  roomDrawingObj.pencilDrawing.push(data.collectionOfPencilLineSegment);
+  roomDrawing.set(data.roomId, roomDrawingObj);
 }
 
 function addUserInRegistryMap(data, userId, ws) {
@@ -150,6 +189,9 @@ wss.on("connection", (ws, req) => {
     }
     if (data.tool === "RECTANGLE" && data.type === "END-COORDINATE") {
       addRectangleInRoomMap(data);
+    }
+    if (data.tool === "PENCIL" && data.type === "END-COORDINATE") {
+      addPencilLineSegmentsInRoomMap(data);
     }
   });
 
