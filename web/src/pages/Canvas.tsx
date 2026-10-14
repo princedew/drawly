@@ -112,7 +112,6 @@ function Canvas() {
         if (!ctx) return;
 
         ctx.lineWidth = 2;
-        const prevCoOrdinateForRendering = new Map<number, CoOrdinateObject>();
 
         for (const collection of arrayOfPencilLineSegCollection) {
           for (const partOfLineSegment of collection) {
@@ -126,26 +125,13 @@ function Canvas() {
                 partOfLineSegment.coOrdinate.x,
                 partOfLineSegment.coOrdinate.y,
               );
-              prevCoOrdinateForRendering.set(partOfLineSegment.userId, {
-                x: partOfLineSegment.coOrdinate.x,
-                y: partOfLineSegment.coOrdinate.y,
-              });
             } else if (partOfLineSegment.type === "MOVING-COORDINATE") {
-              const prevCoOrdinate = prevCoOrdinateForRendering.get(
-                partOfLineSegment.userId,
-              );
-              if (!prevCoOrdinate) continue;
               ctx.lineTo(
                 partOfLineSegment.coOrdinate.x,
                 partOfLineSegment.coOrdinate.y,
               );
-              prevCoOrdinateForRendering.set(partOfLineSegment.userId, {
-                x: partOfLineSegment.coOrdinate.x,
-                y: partOfLineSegment.coOrdinate.y,
-              });
               ctx.stroke();
             } else if (partOfLineSegment.type === "END-COORDINATE") {
-              prevCoOrdinateForRendering.delete(partOfLineSegment.userId);
             }
           }
         }
