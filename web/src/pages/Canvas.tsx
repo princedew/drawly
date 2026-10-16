@@ -8,6 +8,7 @@ import { useRender } from "../hooks/useRender";
 import { DRAWING_COLORS } from "../utils/utils";
 
 export const TOOL = {
+  PENCIL: "PENCIL",
   RECTANGLE: "RECTANGLE",
   CIRCLE: "CIRCLE",
 };
@@ -17,6 +18,24 @@ type Tool = keyof typeof TOOL;
 type MouseEventType = "MOVING" | "START" | "END";
 
 type CoOrdinateObject = { x: number; y: number };
+
+// --------------------------
+export type wsData = {
+  id: string;
+  type: MouseEventType;
+  tool: Tool;
+  userId: number;
+  color: DrawingColor;
+  rectData: [number, number, number, number];
+  coOrdinate: { x: number; y: number };
+};
+
+export type wsDataForPencilLineSegmentCollection = {
+  id: string;
+  type: "PENCIL-COLLECTION";
+  userId: number;
+  collectionOfPencilLineSegment: PencilDataForDrawingStore[];
+};
 
 // --------------------------
 export type RectDataForDrawingStore = {
@@ -327,11 +346,6 @@ function Canvas() {
   //   }
   // }
 
-  // function wsSend(data: PencilDataType | RectDataType) {
-  //   if (wsc && userId !== null && wsc.readyState === WebSocket.OPEN) {
-  //     wsc.send(JSON.stringify({ ...data, roomId: roomData?.roomId ?? null }));
-  //   }
-  // }
   // function addDrawingIntoStoreMap(
   //   userId: number,
   //   data: RectDataType | PencilDataType[],
@@ -352,7 +366,18 @@ function Canvas() {
   //     }
   //   }
   // }
+  function wsSend(
+    data:
+      | Omit<wsData, "rectData">
+      | Omit<wsData, "coOrdinate">
+      | wsDataForPencilLineSegmentCollection,
+  ) {
+    if (wsc && userId !== null && wsc.readyState === WebSocket.OPEN) {
+      wsc.send(JSON.stringify({ ...data, roomId: roomData?.roomId ?? null }));
+    }
+  }
 
+  // THIS FN ADD THE PENCIL OBJ FROM THE START AND MOVE FN TO THE REF ARRAY THAT WE SEND TO useRender()
   function addInPencilLineSegmentCollection(data: PencilDataForDrawingStore) {
     collectionOfPencilLineSegment.current = [
       ...collectionOfPencilLineSegment.current,
@@ -391,14 +416,16 @@ function Canvas() {
           color,
         });
         renderDrawings(userDrawingStore, canvas);
-
-        // wsSend({
-        //   type: "START-COORDINATE",
-        //   tool,
-        //   userId,
-        //   color,
-        //   rectData: [x, y, 0, 0],
-        // });
+        if (roomData) {
+          wsSend({
+            id: idRef.current,
+            type: "START",
+            tool,
+            userId,
+            color,
+            rectData: [x, y, 0, 0],
+          });
+        }
       } else if (tool === "PENCIL") {
         ctx.beginPath();
         ctx.moveTo(x, y);
@@ -409,7 +436,16 @@ function Canvas() {
           coOrdinate,
           color,
         });
-        // wsSend({ type: "START-COORDINATE", tool, userId, color, coOrdinate });
+        if (roomData) {
+          wsSend({
+            id: idRef.current,
+            type: "START",
+            tool,
+            userId,
+            color,
+            coOrdinate,
+          });
+        }
       }
       isMoveRef.current = true;
     } catch (error) {
@@ -460,7 +496,16 @@ function Canvas() {
           }
         });
         renderDrawings(userDrawingStore, canvas);
-
+        if (roomData) {
+          wsSend({
+            id: idRef.current,
+            type: "MOVING",
+            tool,
+            userId,
+            color,
+            rectData: [startX, startY, w, h],
+          });
+        }
         // >> FROM HERE TO,
         // const prevCoOrd = rectImage.current;
         // if (!prevCoOrd) {
@@ -482,13 +527,6 @@ function Canvas() {
         //   userDrawingStore.pop();
         // }
 
-        // wsSend({
-        //   type: "MOVING-COORDINATE",
-        //   tool,
-        //   userId,
-        //   color,
-        //   rectData: [startX, startY, w, h],
-        // });
         // movingEventCountRef.current += 1;
       } else if (tool === "PENCIL") {
         ctx.strokeStyle = DRAWING_COLORS[color];
@@ -501,8 +539,16 @@ function Canvas() {
           coOrdinate,
           color,
         });
-
-        // wsSend({ type: "MOVING-COORDINATE", tool, userId, color, coOrdinate });
+        if (roomData) {
+          wsSend({
+            id: idRef.current,
+            type: "MOVING",
+            tool,
+            userId,
+            color,
+            coOrdinate,
+          });
+        }
       }
     } catch (error) {
       console.log("\n> ERROR [fn move()] : ", error);
@@ -547,6 +593,28 @@ function Canvas() {
       renderDrawings(userDrawingStore, canvas);
       idRef.current === null;
 
+      if (roomData) {
+        wsSend({
+          id: idRef.current,
+          type: "END",
+          tool,
+          userId,
+          color,
+          rectData: [
+            Math.min(startingCoOrd.x, x),
+            Math.min(startingCoOrd.y, y),
+            Math.abs(startingCoOrd.x - x),
+            Math.abs(startingCoOrd.y - y),
+          ],
+        });
+        wsSend({
+          id: idRef.current,
+          userId,
+          type: "PENCIL-COLLECTION",
+          collectionOfPencilLineSegment,
+        });
+      }
+
       // if (!rectImage.current) {
       //   return;
       // }
@@ -565,13 +633,6 @@ function Canvas() {
       //   rectData,
       // });
 
-      // wsSend({
-      //   type: "END-COORDINATE",
-      //   tool,
-      //   userId,
-      //   color,
-      //   rectData,
-      // });
       // rectImage.current = null;
     } else if (tool === "PENCIL") {
       ctx.lineTo(x, y);
@@ -584,14 +645,16 @@ function Canvas() {
         color,
       });
       userDrawingStore.push(collectionOfPencilLineSegment.current);
-      // wsSend({
-      //   type: "END-COORDINATE",
-      //   tool,
-      //   userId,
-      //   color,
-      //   coOrdinate,
-      //   collectionOfPencilLineSegment: collectionOfPencilLineSegment.current,
-      // });
+      if (roomData) {
+        wsSend({
+          id: idRef.current,
+          type: "END",
+          tool,
+          userId,
+          color,
+          coOrdinate,
+        });
+      }
     }
     isMoveRef.current = false;
   };
