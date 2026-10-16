@@ -12,30 +12,6 @@ function time() {
   return String(new Date(Date.now())).split(" ")[4];
 }
 
-// type RectImageType = {
-//   x: number;
-//   y: number;
-//   w: number;
-//   h: number;
-//   color: string;
-// };
-
-// type CoOrdinateObject = {
-//   x: number;
-//   y: number;
-// };
-
-// type Tool = "PENCIL" | "RECTANGLE";
-
-// type EventType = "START-COORDINATE" | "MOVING-COORDINATE" | "END-COORDINATE";
-// type PencilDataType = {
-//   type: EventType;
-//   tool: Tool;
-//   userId: number;
-//   color: string;
-//   coOrdinate: CoOrdinateObject;
-// };
-
 type RoomDrawing = RectDataForDrawingStore | PencilDataForDrawingStore[] | [];
 
 const wss = new WebSocketServer({ port: 8000 });

@@ -84,24 +84,3 @@ export function updateRectangleInStore(
 
   drawings[existingIndex] = updatedRect;
 }
-
-// export function updateRectangleInStore(drawings: DrawingStoreItem[]): void {
-//   const latestDrawing = drawings[drawings.length - 1];
-
-//   if (!latestDrawing || Array.isArray(latestDrawing)) return;
-//   if (latestDrawing.tool !== "RECTANGLE") return;
-//   if (latestDrawing.type !== "START") return;
-
-//   const latestShapeData = drawings.pop();
-//   if (!latestShapeData || Array.isArray(latestShapeData)) return;
-
-//   const existingIndex = drawings.findIndex(
-//     (drawing) => !Array.isArray(drawing) && drawing.id === latestShapeData.id,
-//   );
-
-//   if (existingIndex !== -1) {
-//     drawings[existingIndex] = latestShapeData;
-//   } else {
-//     drawings.push(latestShapeData);
-//   }
-// }
