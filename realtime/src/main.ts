@@ -2,40 +2,43 @@ import { prisma } from "../../package/db/lib/prisma.js";
 import { WebSocket, WebSocketServer } from "ws";
 import jwt from "jsonwebtoken";
 
-type RectImageType = {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  color: string;
-};
+function time() {
+  return String(new Date(Date.now())).split(" ")[4];
+}
 
-type CoOrdinateObject = {
-  x: number;
-  y: number;
-};
+// type RectImageType = {
+//   x: number;
+//   y: number;
+//   w: number;
+//   h: number;
+//   color: string;
+// };
 
-type Tool = "PENCIL" | "RECTANGLE";
+// type CoOrdinateObject = {
+//   x: number;
+//   y: number;
+// };
 
-type EventType = "START-COORDINATE" | "MOVING-COORDINATE" | "END-COORDINATE";
-type PencilDataType = {
-  type: EventType;
-  tool: Tool;
-  userId: number;
-  color: string;
-  coOrdinate: CoOrdinateObject;
-};
+// type Tool = "PENCIL" | "RECTANGLE";
 
-type RoomDrawing = {
-  rectangleDrawing: RectImageType[];
-  pencilDrawing: PencilDataType[];
-};
+// type EventType = "START-COORDINATE" | "MOVING-COORDINATE" | "END-COORDINATE";
+// type PencilDataType = {
+//   type: EventType;
+//   tool: Tool;
+//   userId: number;
+//   color: string;
+//   coOrdinate: CoOrdinateObject;
+// };
+
+// type RoomDrawing = {
+//   rectangleDrawing: RectImageType[];
+//   pencilDrawing: PencilDataType[];
+// };
 
 const wss = new WebSocketServer({ port: 8000 });
 
 const registry = new Map<number, WebSocket>();
 const room = new Map<number, Set<number>>();
-
 const roomDrawing = new Map<number, RoomDrawing>();
 
 function sendRoomDrawing(ws: WebSocket, roomId: number) {
@@ -52,19 +55,22 @@ function sendRoomDrawing(ws: WebSocket, roomId: number) {
   }
 }
 
-function time() {
-  return String(new Date(Date.now())).split(" ")[4];
+// -------------------------
+// REGISTRY ADD/ REMOVE
+// -------------------------
+function addUserInRegistryMap(data, userId, ws) {
+  if (data.userId !== userId) return ws.close(1008, "Invalid user ID");
+  console.log(`[${time()}] USERID-INFO :`, userId);
+  registry.set(userId, ws);
+}
+function removeUserFromRegistryMap(userId) {
+  console.log(`[${time()}] CLIENT DIS-CONNECTED`);
+  registry.delete(userId);
 }
 
-function removeUserFromRooms(userId: number) {
-  for (const [roomId, users] of room.entries()) {
-    users.delete(userId);
-    if (users.size === 0) {
-      room.delete(roomId);
-    }
-  }
-}
-
+// -------------------
+// ROOM ADD/ REMOVE
+// -------------------
 function addUserToRoom(roomId: number, userId: number) {
   removeUserFromRooms(userId);
   const users = room.get(roomId);
@@ -77,20 +83,18 @@ function addUserToRoom(roomId: number, userId: number) {
     room.set(roomId, users);
   }
 }
-
-function broadcastToRoom(data: unknown, roomId: number, senderId: number) {
-  const users = room.get(roomId);
-  if (!users?.has(senderId)) return;
-
-  for (const userId of users) {
-    if (userId === senderId) continue;
-    const ws = registry.get(userId);
-    if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(data));
+function removeUserFromRooms(userId: number) {
+  for (const [roomId, users] of room.entries()) {
+    users.delete(userId);
+    if (users.size === 0) {
+      room.delete(roomId);
     }
   }
 }
 
+// -------------------------------
+// ADD DRAWINGS IN ROOMDATA
+// -------------------------------
 function addRectangleInRoomMap(data) {
   const [x, y, w, h] = data.rectData;
   let roomDrawingObj = roomDrawing.get(data.roomId);
@@ -101,7 +105,6 @@ function addRectangleInRoomMap(data) {
   roomDrawingObj.rectangleDrawing.push({ x, y, w, h, color: data.color });
   roomDrawing.set(data.roomId, roomDrawingObj);
 }
-
 function addPencilLineSegmentsInRoomMap(data) {
   if (!data.collectionOfPencilLineSegment) {
     console.log("No collection of pencil lineSegment");
@@ -116,15 +119,21 @@ function addPencilLineSegmentsInRoomMap(data) {
   roomDrawing.set(data.roomId, roomDrawingObj);
 }
 
-function addUserInRegistryMap(data, userId, ws) {
-  if (data.userId !== userId) return ws.close(1008, "Invalid user ID");
-  console.log(`[${time()}] USERID-INFO :`, userId);
-  registry.set(userId, ws);
-}
+// -------------------
+// OTHERS
+// -------------------
 
-function removeUserFromRegistryMap(userId) {
-  console.log(`[${time()}] CLIENT DIS-CONNECTED`);
-  registry.delete(userId);
+function broadcastToRoom(data: unknown, roomId: number, senderId: number) {
+  const users = room.get(roomId);
+  if (!users?.has(senderId)) return;
+
+  for (const userId of users) {
+    if (userId === senderId) continue;
+    const ws = registry.get(userId);
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(data));
+    }
+  }
 }
 
 function authenthicate(cookie, ws) {
