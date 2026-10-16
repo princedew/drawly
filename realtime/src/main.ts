@@ -1,6 +1,12 @@
 import { prisma } from "../../package/db/lib/prisma.js";
 import { WebSocket, WebSocketServer } from "ws";
 import jwt from "jsonwebtoken";
+import type {
+  wsData,
+  wsDataForPencilLineSegmentCollection,
+  RectDataForDrawingStore,
+  PencilDataForDrawingStore,
+} from "../../web/src/pages/Canvas.js";
 
 function time() {
   return String(new Date(Date.now())).split(" ")[4];
@@ -30,16 +36,13 @@ function time() {
 //   coOrdinate: CoOrdinateObject;
 // };
 
-// type RoomDrawing = {
-//   rectangleDrawing: RectImageType[];
-//   pencilDrawing: PencilDataType[];
-// };
+type RoomDrawing = RectDataForDrawingStore | PencilDataForDrawingStore[] | [];
 
 const wss = new WebSocketServer({ port: 8000 });
 
 const registry = new Map<number, WebSocket>();
 const room = new Map<number, Set<number>>();
-const roomDrawing = new Map<number, RoomDrawing>();
+const roomDrawing = new Map<number, RoomDrawing[]>();
 
 function sendRoomDrawing(ws: WebSocket, roomId: number) {
   const roomDrawingObj = roomDrawing.get(roomId);
@@ -95,48 +98,119 @@ function removeUserFromRooms(userId: number) {
 // -------------------------------
 // ADD DRAWINGS IN ROOMDATA
 // -------------------------------
-function addRectangleInRoomMap(data) {
+function addRectangleInRoomMap(data: Omit<wsData, "coOrdinate">) {
   const [x, y, w, h] = data.rectData;
-  let roomDrawingObj = roomDrawing.get(data.roomId);
-  if (!roomDrawingObj) {
-    roomDrawingObj = { rectangleDrawing: [], pencilDrawing: [] };
-    roomDrawing.set(data.roomId, roomDrawingObj);
+  let roomDrawingArr = roomDrawing.get(data.roomId);
+  if (!roomDrawingArr) {
+    roomDrawingArr = [];
+    roomDrawing.set(data.roomId, roomDrawingArr);
   }
-  roomDrawingObj.rectangleDrawing.push({ x, y, w, h, color: data.color });
-  roomDrawing.set(data.roomId, roomDrawingObj);
+  roomDrawingArr.push({
+    id: data.id,
+    type: data.type,
+    tool: data.tool,
+    x,
+    y,
+    w,
+    h,
+    color: data.color,
+  });
+  roomDrawing.set(data.roomId, roomDrawingArr);
 }
-function addPencilLineSegmentsInRoomMap(data) {
+function addPencilLineSegmentsInRoomMap(
+  data: wsDataForPencilLineSegmentCollection,
+) {
   if (!data.collectionOfPencilLineSegment) {
     console.log("No collection of pencil lineSegment");
     return;
   }
-  let roomDrawingObj = roomDrawing.get(data.roomId);
-  if (!roomDrawingObj) {
-    roomDrawingObj = { rectangleDrawing: [], pencilDrawing: [] };
-    roomDrawing.set(data.roomId, roomDrawingObj);
+  let roomDrawingArr = roomDrawing.get(data.roomId);
+  if (!roomDrawingArr) {
+    roomDrawingArr = [];
+    roomDrawing.set(data.roomId, roomDrawingArr);
   }
-  roomDrawingObj.pencilDrawing.push(data.collectionOfPencilLineSegment);
-  roomDrawing.set(data.roomId, roomDrawingObj);
+  roomDrawingArr.push(data.collectionOfPencilLineSegment);
+  roomDrawing.set(data.roomId, roomDrawingArr);
 }
 
 // -------------------
 // OTHERS
 // -------------------
 
-function broadcastToRoom(data: unknown, roomId: number, senderId: number) {
+function broadcastToRoom(
+  data:
+    | Omit<wsData, "rectData">
+    | Omit<wsData, "coOrdinate">
+    | wsDataForPencilLineSegmentCollection,
+  roomId: number,
+  senderId: number,
+) {
   const users = room.get(roomId);
-  if (!users?.has(senderId)) return;
+  if (!users) {
+    console.log(`No users in roomId: ${roomId}`);
+    return;
+  }
+  if (!users.has(senderId)) return;
 
   for (const userId of users) {
     if (userId === senderId) continue;
     const ws = registry.get(userId);
     if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(data));
+      if (
+        data.type === "PENCIL-COLLECTION" &&
+        "collectionOfPencilLineSegment" in data
+      ) {
+        ws.send(JSON.stringify(data.collectionOfPencilLineSegment));
+      } else {
+        if (data.tool === "RECTANGLE" && "rectData" in data) {
+          const [x, y, w, h] = data.rectData;
+          ws.send(
+            JSON.stringify({
+              id: data.id,
+              type: data.type,
+              tool: data.tool,
+              color: data.color,
+              x,
+              y,
+              w,
+              h,
+            }),
+          );
+        } else if (data.tool === "PENCIL" && "coOrdinate" in data) {
+          ws.send(
+            JSON.stringify({
+              id: data.id,
+              type: data.type,
+              tool: data.tool,
+              color: data.color,
+              coOrdinate: data.coOrdinate,
+            }),
+          );
+        }
+      }
     }
   }
 }
 
-function authenthicate(cookie, ws) {
+function roomOps(data, userId, ws) {
+  if (data.type === "FIRST-MSG") {
+    addUserInRegistryMap(data, userId, ws);
+  }
+  if (data.type === "JOIN-ROOM") {
+    sendRoomDrawing(ws, data.roomId);
+  }
+  if (data.type === "LEAVE-ROOM") {
+    removeUserFromRooms(userId);
+  }
+  if (
+    (data.type === "CREATE-ROOM" || data.type === "JOIN-ROOM") &&
+    data.userId === userId
+  ) {
+    addUserToRoom(data.roomId, userId);
+  }
+}
+
+function authenthicate(cookie: string, ws: WebSocket) {
   if (!cookie) {
     console.log("COOKIE:", cookie);
     return ws.close(1008, "Unauthorized");
@@ -167,39 +241,31 @@ function authenthicate(cookie, ws) {
 }
 
 wss.on("connection", (ws, req) => {
+  if (!req.headers.cookie) {
+    console.log("Cookie not found.");
+    return;
+  }
   let userId = authenthicate(req.headers.cookie, ws);
 
   ws.on("message", (msg) => {
-    const data = JSON.parse(msg.toString());
+    const data:
+      | Omit<wsData, "rectData">
+      | Omit<wsData, "coOrdinate">
+      | wsDataForPencilLineSegmentCollection = JSON.parse(msg.toString());
     console.log("WS-SERVER RECV: ", data);
 
-    if (data.type === "FIRST-MSG") {
-      addUserInRegistryMap(data, userId, ws);
-    }
-    if (data.type === "JOIN-ROOM") {
-      sendRoomDrawing(ws, data.roomId);
-    }
-    if (data.type === "LEAVE-ROOM") {
-      removeUserFromRooms(userId);
-    }
+    roomOps(data, userId, ws);
+    broadcastToRoom(data, data.roomId, data.userId)
+
     if (
-      (data.type === "CREATE-ROOM" || data.type === "JOIN-ROOM") &&
-      data.userId === userId
+      data.type !== "PENCIL-COLLECTION" &&
+      data.tool === "RECTANGLE" &&
+      data.type === "END" &&
+      "rectData" in data
     ) {
-      addUserToRoom(data.roomId, userId);
+      addRectangleInRoomMap(data as Omit<wsData, "coOrdinate">);
     }
-    if (
-      (data.type === "START-COORDINATE" ||
-        data.type === "MOVING-COORDINATE" ||
-        data.type === "END-COORDINATE") &&
-      data.userId === userId
-    ) {
-      broadcastToRoom(data, data.roomId, userId);
-    }
-    if (data.tool === "RECTANGLE" && data.type === "END-COORDINATE") {
-      addRectangleInRoomMap(data);
-    }
-    if (data.tool === "PENCIL" && data.type === "END-COORDINATE") {
+    if (data.type === "PENCIL-COLLECTION") {
       addPencilLineSegmentsInRoomMap(data);
     }
   });

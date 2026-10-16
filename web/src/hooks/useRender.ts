@@ -1,9 +1,9 @@
-import type { DrawingStoreItem } from "../pages/Canvas";
+import type { DrawingStoreItem, RectDataForDrawingStore } from "../pages/Canvas";
 import type { DrawingColor } from "../store/store";
 import { DRAWING_COLORS } from "../utils/utils";
 
 export function useRender() {
-  return { renderDrawings };
+  return { renderDrawings, updateRectangleInStore };
 }
 
 function renderDrawings(
@@ -23,6 +23,7 @@ function renderDrawings(
     return;
   }
   console.log("> USE-RENDER HOOK,  DRAWINGS:", drawings);
+
   const ctx = canvas.getContext("2d");
   if (!ctx) {
     console.log("No ctx in useRender hook.");
@@ -52,8 +53,8 @@ function renderDrawings(
         } else if (pencilObj.type === "END") {
           console.log("useRender hook end drawing msg");
           const prevPart = drawing[i - 1];
-            ctx.moveTo(prevPart.coOrdinate.x, prevPart.coOrdinate.y);
-            ctx.lineTo(pencilObj.coOrdinate.x, pencilObj.coOrdinate.y);
+          ctx.moveTo(prevPart.coOrdinate.x, prevPart.coOrdinate.y);
+          ctx.lineTo(pencilObj.coOrdinate.x, pencilObj.coOrdinate.y);
           ctx.stroke();
         }
       }
@@ -66,3 +67,41 @@ function renderDrawings(
     }
   }
 }
+
+export function updateRectangleInStore(
+  drawings: DrawingStoreItem[],
+  updatedRect: RectDataForDrawingStore,
+): void {
+  const existingIndex = drawings.findIndex(
+    (drawing) =>
+      !Array.isArray(drawing) && drawing.id === updatedRect.id,
+  );
+
+  if (existingIndex === -1) {
+    drawings.push(updatedRect);
+    return;
+  }
+
+  drawings[existingIndex] = updatedRect;
+}
+
+// export function updateRectangleInStore(drawings: DrawingStoreItem[]): void {
+//   const latestDrawing = drawings[drawings.length - 1];
+
+//   if (!latestDrawing || Array.isArray(latestDrawing)) return;
+//   if (latestDrawing.tool !== "RECTANGLE") return;
+//   if (latestDrawing.type !== "START") return;
+
+//   const latestShapeData = drawings.pop();
+//   if (!latestShapeData || Array.isArray(latestShapeData)) return;
+
+//   const existingIndex = drawings.findIndex(
+//     (drawing) => !Array.isArray(drawing) && drawing.id === latestShapeData.id,
+//   );
+
+//   if (existingIndex !== -1) {
+//     drawings[existingIndex] = latestShapeData;
+//   } else {
+//     drawings.push(latestShapeData);
+//   }
+// }

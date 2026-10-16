@@ -13,18 +13,19 @@ export const TOOL = {
   CIRCLE: "CIRCLE",
 };
 
-type Tool = keyof typeof TOOL;
+export type Tool = keyof typeof TOOL;
 
-type MouseEventType = "MOVING" | "START" | "END";
+export type MouseEventType = "MOVING" | "START" | "END";
 
-type CoOrdinateObject = { x: number; y: number };
+export type CoOrdinateObject = { x: number; y: number };
 
 // --------------------------
 export type wsData = {
   id: string;
+  roomId: number;
+  userId: number;
   type: MouseEventType;
   tool: Tool;
-  userId: number;
   color: DrawingColor;
   rectData: [number, number, number, number];
   coOrdinate: { x: number; y: number };
@@ -33,6 +34,7 @@ export type wsData = {
 export type wsDataForPencilLineSegmentCollection = {
   id: string;
   type: "PENCIL-COLLECTION";
+  roomId: number;
   userId: number;
   collectionOfPencilLineSegment: PencilDataForDrawingStore[];
 };
@@ -62,7 +64,7 @@ const userDrawingStore: DrawingStoreItem[] = [];
 
 function Canvas() {
   const navigate = useNavigate();
-  const { renderDrawings } = useRender();
+  const { renderDrawings, updateRectangleInStore } = useRender();
 
   const tool = useStore((state) => state.tool);
   const color = useStore((state) => state.color);
@@ -94,34 +96,44 @@ function Canvas() {
   }, [navigate, userId]);
 
   // LISTENING WS MSG AND RENDERING DRAWING
-  // useEffect(() => {
-  //   if (!wsc || userId === null) return;
+  useEffect(() => {
+    if (!wsc || userId === null) return;
 
-  //   try {
-  //     wsc.onmessage = async (msg) => {
-  //       const data = JSON.parse(msg.data);
-  //       // console.log("PARSE-DATA:", data);
-  //       if (data.userId === userId) return;
-  //       if (data.tool === "RECTANGLE") {
-  //         renderRectangle(data);
-  //       }
-  //       if (data.tool === "PENCIL") {
-  //         renderPencilDrawing(data);
-  //       }
-  //       if (data.type === "PREV-DRAWING") {
-  //         console.log("PREV-DATA :", data);
-  //         renderPrevRectDrawing(data.roomDrawingObj.rectangleDrawing);
-  //         renderPrevPencilDrawing(data.roomDrawingObj.pencilDrawing);
-  //       }
-  //     };
-  //   } catch (error) {
-  //     if (error instanceof Error) {
-  //       console.log("ERROR:", error.message);
-  //     } else {
-  //       console.log("ERROR:", error);
-  //     }
-  //   }
-  // }, [wsc, userId]);
+    try {
+      wsc.onmessage = async (msg) => {
+        const data = JSON.parse(msg.data);
+        // console.log("PARSE-DATA:", data);
+        if (data.userId === userId) return;
+        if (!canvasRef.current) {
+          console.log("No ref of canvas.");
+          return;
+        }
+        if (!Array.isArray(data) && data.tool === "RECTANGLE") {
+          updateRectangleInStore(userDrawingStore, data);
+        } else {
+          userDrawingStore.push(data);
+        }
+        renderDrawings(userDrawingStore, canvasRef.current);
+        // if (data.tool === "RECTANGLE") {
+        //   renderRectangle(data);
+        // }
+        // if (data.tool === "PENCIL") {
+        //   renderPencilDrawing(data);
+        // }
+        // if (data.type === "PREV-DRAWING") {
+        //   console.log("PREV-DATA :", data);
+        //   renderPrevRectDrawing(data.roomDrawingObj.rectangleDrawing);
+        //   renderPrevPencilDrawing(data.roomDrawingObj.pencilDrawing);
+        // }
+      };
+    } catch (error) {
+      if (error instanceof Error) {
+        console.log("ERROR:", error.message);
+      } else {
+        console.log("ERROR:", error);
+      }
+    }
+  }, [wsc, userId]);
 
   // -----------------------
   // RENDERING THE PREV/ EXISTING ROOM DRAWING, FEAT: FOR MID JOIN USER GET THE ALREADY DRAWN
@@ -422,6 +434,7 @@ function Canvas() {
             type: "START",
             tool,
             userId,
+            roomId: roomData.roomId,
             color,
             rectData: [x, y, 0, 0],
           });
@@ -442,6 +455,7 @@ function Canvas() {
             type: "START",
             tool,
             userId,
+            roomId: roomData.roomId,
             color,
             coOrdinate,
           });
@@ -502,6 +516,7 @@ function Canvas() {
             type: "MOVING",
             tool,
             userId,
+            roomId: roomData.roomId,
             color,
             rectData: [startX, startY, w, h],
           });
@@ -545,6 +560,7 @@ function Canvas() {
             type: "MOVING",
             tool,
             userId,
+            roomId: roomData.roomId,
             color,
             coOrdinate,
           });
@@ -599,6 +615,7 @@ function Canvas() {
           type: "END",
           tool,
           userId,
+          roomId: roomData.roomId,
           color,
           rectData: [
             Math.min(startingCoOrd.x, x),
@@ -606,12 +623,6 @@ function Canvas() {
             Math.abs(startingCoOrd.x - x),
             Math.abs(startingCoOrd.y - y),
           ],
-        });
-        wsSend({
-          id: idRef.current,
-          userId,
-          type: "PENCIL-COLLECTION",
-          collectionOfPencilLineSegment,
         });
       }
 
@@ -651,8 +662,16 @@ function Canvas() {
           type: "END",
           tool,
           userId,
+          roomId: roomData.roomId,
           color,
           coOrdinate,
+        });
+        wsSend({
+          id: idRef.current,
+          userId,
+          roomId: roomData.roomId,
+          type: "PENCIL-COLLECTION",
+          collectionOfPencilLineSegment: collectionOfPencilLineSegment.current,
         });
       }
     }
